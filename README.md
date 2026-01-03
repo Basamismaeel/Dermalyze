@@ -1,4 +1,6 @@
-# Personal Care Product Advisor
+# Dermalyze - Personal Care Product Advisor
+
+> **🌐 Live App**: [https://dermalyze-one.vercel.app](https://dermalyze-one.vercel.app)
 
 A trustworthy, user-first platform that helps users understand whether personal care products (skincare, haircare, makeup, body care) are safe or risky for them, based on their skin type, concerns, and ingredient preferences.
 
