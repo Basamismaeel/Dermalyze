@@ -16,7 +16,7 @@ export default function Home({ hasProfile, hasSession }: { hasProfile: boolean; 
               <Logo size="lg" showText={false} />
             </div>
             <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 bg-clip-text text-transparent mb-6 leading-tight animate-gradient-text">
-              Personal Care Product Advisor
+              Dermalyze
             </h1>
             <p className="text-xl md:text-2xl text-gray-700 mb-8 max-w-3xl mx-auto leading-relaxed animate-slide-in-right">
               Find out if skincare, haircare, makeup, and body care products are

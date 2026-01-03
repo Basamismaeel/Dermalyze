@@ -50,7 +50,7 @@ export function Logo({ className = '', showText = true, size = 'md' }: LogoProps
       </div>
       {showText && (
         <span className={`${textSizes[size]} font-bold bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 bg-clip-text text-transparent group-hover:from-primary-700 group-hover:to-primary-900 transition-all duration-300`}>
-          Skincare Advisor
+          Dermalyze
         </span>
       )}
     </Link>
