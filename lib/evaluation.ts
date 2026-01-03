@@ -209,10 +209,10 @@ export async function evaluateProduct(
 
   return {
     verdict,
-    reasoning: [...new Set(reasoning)], // Remove duplicates
-    goodFor: [...new Set(goodFor)],
-    cautionFor: [...new Set(cautionFor)],
-    notRecommendedFor: [...new Set(notRecommendedFor)],
+    reasoning: Array.from(new Set(reasoning)), // Remove duplicates
+    goodFor: Array.from(new Set(goodFor)),
+    cautionFor: Array.from(new Set(cautionFor)),
+    notRecommendedFor: Array.from(new Set(notRecommendedFor)),
   }
 }
 
