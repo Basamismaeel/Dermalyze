@@ -137,9 +137,18 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account, profile, email, credentials }) {
-      // Allow sign in for all users
-      // Errors in authorize will prevent sign in
-      return true
+      try {
+        // If user exists, allow sign in
+        // authorize returning null will prevent this from being called
+        if (user) {
+          console.log('[AUTH] SignIn callback - allowing sign in for:', user.email)
+          return true
+        }
+        return false
+      } catch (error: any) {
+        console.error('[AUTH] SignIn callback error:', error)
+        return false
+      }
     },
     async session({ session, token }) {
       try {
@@ -171,29 +180,5 @@ export const authOptions: NextAuthOptions = {
   },
 }
 
-// Create NextAuth handler with error catching
-const handler = NextAuth(authOptions)
-
-// Wrap handler to catch any unhandled errors
-export default async function authHandler(req: any, res: any) {
-  try {
-    return handler(req, res)
-  } catch (error: any) {
-    console.error('[AUTH HANDLER] Unhandled error:', error)
-    console.error('[AUTH HANDLER] Error stack:', error?.stack)
-    
-    // If response hasn't been sent, send error response
-    if (res && !res.headersSent) {
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' 
-          ? error?.message || 'Unknown error'
-          : 'An error occurred during authentication'
-      })
-    }
-    
-    // Re-throw if we can't handle it
-    throw error
-  }
-}
+export default NextAuth(authOptions)
 
