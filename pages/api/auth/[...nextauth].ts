@@ -5,6 +5,19 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
+// Check environment variables on startup
+if (process.env.NODE_ENV !== 'production') {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL is not set')
+  }
+  if (!process.env.NEXTAUTH_SECRET) {
+    console.warn('⚠️  NEXTAUTH_SECRET is not set')
+  }
+  if (!process.env.NEXTAUTH_URL) {
+    console.warn('⚠️  NEXTAUTH_URL is not set')
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
@@ -19,28 +32,45 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password are required')
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        })
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          })
 
-        if (!user || !user.password) {
-          throw new Error('Invalid email or password')
-        }
+          if (!user || !user.password) {
+            throw new Error('Invalid email or password')
+          }
 
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        )
+          const isPasswordValid = await bcrypt.compare(
+            credentials.password,
+            user.password
+          )
 
-        if (!isPasswordValid) {
-          throw new Error('Invalid email or password')
-        }
+          if (!isPasswordValid) {
+            throw new Error('Invalid email or password')
+          }
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+          }
+        } catch (error: any) {
+          console.error('Sign in error:', error)
+          
+          // Handle database connection errors
+          if (error.code === 'P1001' || error.message?.includes('connect') || error.message?.includes('DATABASE_URL')) {
+            throw new Error('Database connection error. Please check your database configuration.')
+          }
+          
+          // Re-throw authentication errors
+          if (error.message === 'Invalid email or password') {
+            throw error
+          }
+          
+          // For other errors, throw a generic message
+          throw new Error('An error occurred during sign in. Please try again.')
         }
       },
     }),

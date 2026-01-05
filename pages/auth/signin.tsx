@@ -25,13 +25,31 @@ export default function SignInPage() {
       })
 
       if (result?.error) {
-        setError('Invalid email or password')
+        // Log the error for debugging
+        console.error('Sign in error:', result.error)
+        
+        // Show more specific error messages
+        let errorMessage = 'Invalid email or password'
+        
+        if (result.error.includes('Database') || result.error.includes('connection')) {
+          errorMessage = 'Database connection error. Please check your database configuration.'
+        } else if (result.error === 'CredentialsSignin') {
+          errorMessage = 'Invalid email or password'
+        } else if (result.error) {
+          // Try to show the actual error message if available
+          errorMessage = result.error
+        }
+        
+        setError(errorMessage)
       } else if (result?.ok) {
         router.push(callbackUrl)
+      } else {
+        setError('An unexpected error occurred. Please try again.')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error)
-      setError('An error occurred. Please try again.')
+      const errorMessage = error.message || 'An error occurred. Please try again.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
