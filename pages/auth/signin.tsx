@@ -3,64 +3,81 @@ import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 
+interface FormErrors {
+  email?: string
+  password?: string
+  general?: string
+}
+
 export default function SignInPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<FormErrors>({})
+  
   const callbackUrl = (router.query.callbackUrl as string) || '/onboarding'
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {}
+
+    if (!email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Please enter a valid email address'
+    }
+
+    if (!password) {
+      newErrors.password = 'Password is required'
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+    setErrors({})
+
+    if (!validateForm()) {
+      return
+    }
+
     setLoading(true)
 
     try {
       const result = await signIn('credentials', {
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
       })
 
-      // Log the full result for debugging
-      console.log('[SIGNIN] Result:', { ok: result?.ok, error: result?.error, url: result?.url, status: result?.status })
-
       if (result?.error) {
-        // Log the error for debugging
-        console.error('[SIGNIN] Error:', result.error)
-        console.error('[SIGNIN] Full result:', JSON.stringify(result, null, 2))
-        
-        // Show more specific error messages
-        let errorMessage = 'Invalid email or password'
-        
         // Handle different error types
         if (result.error === 'CredentialsSignin') {
-          errorMessage = 'Invalid email or password. Please check your credentials and try again.'
-        } else if (result.error.includes('Database') || result.error.includes('connection') || result.error.includes('DATABASE_URL')) {
-          errorMessage = 'Database connection error. Please try again later.'
-        } else if (result.error.includes('Internal') || result.error.includes('server')) {
-          errorMessage = 'An error occurred. Please try again or contact support if the problem persists.'
-        } else if (result.error) {
-          // Try to show the actual error message if available
-          errorMessage = result.error
+          setErrors({ general: 'Invalid email or password. Please check your credentials and try again.' })
+        } else if (result.error.includes('Database') || result.error.includes('connection')) {
+          setErrors({ general: 'Database connection error. Please try again later.' })
+        } else {
+          setErrors({ general: 'An error occurred. Please try again.' })
         }
-        
-        setError(errorMessage)
-      } else if (result?.ok) {
-        console.log('[SIGNIN] Success, redirecting to:', callbackUrl)
+        setLoading(false)
+        return
+      }
+
+      if (result?.ok) {
+        // Success - redirect
         router.push(callbackUrl)
       } else {
-        console.error('[SIGNIN] Unexpected result:', result)
-        setError('An unexpected error occurred. Please try again.')
+        setErrors({ general: 'An unexpected error occurred. Please try again.' })
+        setLoading(false)
       }
     } catch (error: any) {
-      console.error('[SIGNIN] Exception caught:', error)
-      console.error('[SIGNIN] Error stack:', error.stack)
-      const errorMessage = error.message || 'An error occurred. Please try again.'
-      setError(errorMessage)
-    } finally {
+      console.error('[SIGNIN] Error:', error)
+      setErrors({ general: 'An error occurred. Please try again.' })
       setLoading(false)
     }
   }
@@ -69,6 +86,7 @@ export default function SignInPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-100 flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full">
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-white/20 p-8 md:p-10">
+          {/* Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl mb-4 shadow-lg">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,18 +101,21 @@ export default function SignInPage() {
             </p>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6 animate-in slide-in-from-top-2">
+          {/* Error Message */}
+          {errors.general && (
+            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6">
               <div className="flex items-start">
                 <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
-                <p className="text-sm text-red-800">{error}</p>
+                <p className="text-sm text-red-800">{errors.general}</p>
               </div>
             </div>
           )}
 
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
@@ -109,14 +130,23 @@ export default function SignInPage() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    if (errors.email) setErrors({ ...errors, email: undefined })
+                  }}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.email ? 'border-red-500' : 'border-gray-300'
+                  }`}
                   placeholder="john@example.com"
+                  disabled={loading}
                 />
               </div>
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
             </div>
 
+            {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
@@ -131,15 +161,21 @@ export default function SignInPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (errors.password) setErrors({ ...errors, password: undefined })
+                  }}
+                  className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.password ? 'border-red-500' : 'border-gray-300'
+                  }`}
                   placeholder="Enter your password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,8 +189,12 @@ export default function SignInPage() {
                   )}
                 </button>
               </div>
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              )}
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
@@ -179,6 +219,7 @@ export default function SignInPage() {
             </button>
           </form>
 
+          {/* Sign Up Link */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
@@ -188,6 +229,7 @@ export default function SignInPage() {
             </p>
           </div>
 
+          {/* Divider */}
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -198,9 +240,11 @@ export default function SignInPage() {
               </div>
             </div>
 
+            {/* Google Sign In */}
             <button
               onClick={() => signIn('google', { callbackUrl })}
-              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 font-medium text-gray-700 shadow-sm hover:shadow-md"
+              disabled={loading}
+              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 font-medium text-gray-700 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -223,15 +267,6 @@ export default function SignInPage() {
               <span>Continue with Google</span>
             </button>
           </div>
-
-          <p className="text-xs text-gray-500 text-center mt-8 leading-relaxed">
-            By signing in, you agree to our{' '}
-            <Link href="#" className="text-primary-600 hover:underline">terms of service</Link>
-            {' '}and{' '}
-            <Link href="#" className="text-primary-600 hover:underline">privacy policy</Link>.
-            <br />
-            This is for educational purposes only.
-          </p>
         </div>
       </div>
     </div>

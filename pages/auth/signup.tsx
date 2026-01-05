@@ -2,8 +2,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
-import { Toast } from '@/components/Toast'
-import { LoadingSpinner } from '@/components/LoadingSpinner'
+
+interface FormErrors {
+  name?: string
+  email?: string
+  password?: string
+  confirmPassword?: string
+  general?: string
+}
 
 export default function SignUpPage() {
   const router = useRouter()
@@ -11,112 +17,171 @@ export default function SignUpPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; isVisible: boolean }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  })
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<FormErrors>({})
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {}
+
+    if (name && name.length < 2) {
+      newErrors.name = 'Name must be at least 2 characters'
+    }
+
+    if (!email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Please enter a valid email address'
+    }
+
+    if (!password) {
+      newErrors.password = 'Password is required'
+    } else {
+      if (password.length < 8) {
+        newErrors.password = 'Password must be at least 8 characters'
+      } else if (!/[A-Z]/.test(password)) {
+        newErrors.password = 'Password must contain at least one uppercase letter'
+      } else if (!/[a-z]/.test(password)) {
+        newErrors.password = 'Password must contain at least one lowercase letter'
+      } else if (!/[0-9]/.test(password)) {
+        newErrors.password = 'Password must contain at least one number'
+      }
+    }
+
+    if (!confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password'
+    } else if (password !== confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const getPasswordStrength = (pwd: string): { strength: 'weak' | 'medium' | 'strong'; color: string } => {
+    if (pwd.length < 8) return { strength: 'weak', color: 'bg-red-500' }
+    if (pwd.length >= 8 && /[A-Z]/.test(pwd) && /[a-z]/.test(pwd) && /[0-9]/.test(pwd)) {
+      return { strength: 'strong', color: 'bg-green-500' }
+    }
+    return { strength: 'medium', color: 'bg-yellow-500' }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+    setErrors({})
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+    if (!validateForm()) {
       return
     }
 
     setLoading(true)
+
     try {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ 
+          name: name.trim() || undefined,
+          email: email.trim().toLowerCase(), 
+          password 
+        }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        // Show detailed error if available (in development)
-        const errorMessage = data.details 
-          ? `${data.error}: ${data.details}` 
-          : data.error || 'Failed to create account'
-        setError(errorMessage)
+        // Handle API errors
+        if (data.field) {
+          setErrors({ [data.field]: data.message || data.error })
+        } else {
+          setErrors({ general: data.message || data.error || 'Failed to create account' })
+        }
         setLoading(false)
         return
       }
 
       // Auto sign in after successful signup
-      const result = await signIn('credentials', {
-        email,
+      const signInResult = await signIn('credentials', {
+        email: email.trim().toLowerCase(),
         password,
         redirect: false,
       })
 
-      if (result?.ok) {
-        setToast({ message: 'Account created successfully!', type: 'success', isVisible: true })
-        setTimeout(() => {
-          router.push('/onboarding')
-        }, 1000)
+      if (signInResult?.ok) {
+        router.push('/onboarding')
       } else {
-        setError('Account created but failed to sign in. Please try logging in.')
-        setToast({ message: 'Account created but failed to sign in. Please try logging in.', type: 'error', isVisible: true })
+        // Account created but sign in failed
+        setErrors({ 
+          general: 'Account created successfully! Please sign in to continue.' 
+        })
+        setTimeout(() => {
+          router.push('/auth/signin')
+        }, 2000)
       }
-    } catch (error) {
-      console.error('Error signing up:', error)
-      setError('An error occurred. Please try again.')
-      setToast({ message: 'An error occurred. Please try again.', type: 'error', isVisible: true })
+    } catch (error: any) {
+      console.error('[SIGNUP] Error:', error)
+      setErrors({ general: 'An error occurred. Please try again.' })
     } finally {
       setLoading(false)
     }
   }
 
+  const passwordStrength = password ? getPasswordStrength(password) : null
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-100 flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full">
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-white/20 p-8 md:p-10">
-          <div className="text-center mb-8 animate-bounce-in">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl mb-4 shadow-lg animate-float animate-pulse-glow">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl mb-4 shadow-lg">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent mb-2 animate-gradient-text">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent mb-2">
               Create Account
             </h1>
-            <p className="text-gray-600 animate-slide-in-right">
+            <p className="text-gray-600">
               Sign up to create your personalized skin profile
             </p>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6 animate-in slide-in-from-top-2">
+          {/* Error Message */}
+          {errors.general && (
+            <div className={`bg-${
+              errors.general.includes('successfully') ? 'green' : 'red'
+            }-50 border-l-4 border-${
+              errors.general.includes('successfully') ? 'green' : 'red'
+            }-500 rounded-lg p-4 mb-6`}>
               <div className="flex items-start">
-                <svg className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                <svg className={`w-5 h-5 text-${
+                  errors.general.includes('successfully') ? 'green' : 'red'
+                }-500 mt-0.5 mr-3 flex-shrink-0`} fill="currentColor" viewBox="0 0 20 20">
+                  {errors.general.includes('successfully') ? (
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  ) : (
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  )}
                 </svg>
-                <p className="text-sm text-red-800">{error}</p>
+                <p className={`text-sm text-${
+                  errors.general.includes('successfully') ? 'green' : 'red'
+                }-800`}>{errors.general}</p>
               </div>
             </div>
           )}
 
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="animate-slide-in-right" style={{ animationDelay: '0.1s' }}>
+            {/* Name Field */}
+            <div>
               <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
-                Full Name
+                Full Name <span className="text-gray-400 font-normal">(optional)</span>
               </label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none group-focus-within:animate-wiggle">
-                  <svg className="h-5 w-5 text-gray-400 group-focus-within:text-primary-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
@@ -124,14 +189,23 @@ export default function SignUpPage() {
                   id="name"
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white focus:scale-105 focus:shadow-lg"
+                  onChange={(e) => {
+                    setName(e.target.value)
+                    if (errors.name) setErrors({ ...errors, name: undefined })
+                  }}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.name ? 'border-red-500' : 'border-gray-300'
+                  }`}
                   placeholder="John Doe"
+                  disabled={loading}
                 />
               </div>
+              {errors.name && (
+                <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+              )}
             </div>
 
+            {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
@@ -146,14 +220,23 @@ export default function SignUpPage() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    if (errors.email) setErrors({ ...errors, email: undefined })
+                  }}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.email ? 'border-red-500' : 'border-gray-300'
+                  }`}
                   placeholder="john@example.com"
+                  disabled={loading}
                 />
               </div>
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
             </div>
 
+            {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
@@ -168,16 +251,21 @@ export default function SignUpPage() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (errors.password) setErrors({ ...errors, password: undefined })
+                  }}
+                  className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.password ? 'border-red-500' : 'border-gray-300'
+                  }`}
                   placeholder="At least 8 characters"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,29 +279,35 @@ export default function SignUpPage() {
                   )}
                 </button>
               </div>
-              {password && (
+              {password && passwordStrength && (
                 <div className="mt-2">
                   <div className="flex gap-1">
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
                         className={`h-1 flex-1 rounded-full transition-all ${
-                          password.length >= 8
-                            ? 'bg-green-500'
-                            : password.length >= 4
-                            ? 'bg-yellow-500'
+                          passwordStrength.strength === 'strong' && i <= 3
+                            ? passwordStrength.color
+                            : passwordStrength.strength === 'medium' && i <= 2
+                            ? passwordStrength.color
+                            : passwordStrength.strength === 'weak' && i === 1
+                            ? passwordStrength.color
                             : 'bg-gray-300'
                         }`}
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {password.length >= 8 ? 'Strong password' : password.length >= 4 ? 'Medium strength' : 'Weak password'}
+                  <p className="text-xs text-gray-500 mt-1 capitalize">
+                    {passwordStrength.strength} password
                   </p>
                 </div>
               )}
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              )}
             </div>
 
+            {/* Confirm Password Field */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
                 Confirm Password
@@ -228,16 +322,21 @@ export default function SignUpPage() {
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value)
+                    if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: undefined })
+                  }}
+                  className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-gray-50 focus:bg-white ${
+                    errors.confirmPassword ? 'border-red-500' : confirmPassword && password === confirmPassword ? 'border-green-500' : 'border-gray-300'
+                  }`}
                   placeholder="Confirm your password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={loading}
                 >
                   {showConfirmPassword ? (
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,11 +350,15 @@ export default function SignUpPage() {
                   )}
                 </button>
               </div>
-              {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+              {errors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
+              )}
+              {confirmPassword && password === confirmPassword && !errors.confirmPassword && (
+                <p className="mt-1 text-sm text-green-600">✓ Passwords match</p>
               )}
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
@@ -263,7 +366,10 @@ export default function SignUpPage() {
             >
               {loading ? (
                 <>
-                  <LoadingSpinner size="sm" />
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
                   Creating Account...
                 </>
               ) : (
@@ -277,6 +383,7 @@ export default function SignUpPage() {
             </button>
           </form>
 
+          {/* Sign In Link */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Already have an account?{' '}
@@ -286,6 +393,7 @@ export default function SignUpPage() {
             </p>
           </div>
 
+          {/* Divider */}
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -296,9 +404,11 @@ export default function SignUpPage() {
               </div>
             </div>
 
+            {/* Google Sign Up */}
             <button
               onClick={() => signIn('google', { callbackUrl: '/onboarding' })}
-              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 font-medium text-gray-700 shadow-sm hover:shadow-md"
+              disabled={loading}
+              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all duration-200 font-medium text-gray-700 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -321,24 +431,8 @@ export default function SignUpPage() {
               <span>Continue with Google</span>
             </button>
           </div>
-
-          <p className="text-xs text-gray-500 text-center mt-8 leading-relaxed">
-            By signing up, you agree to our{' '}
-            <Link href="#" className="text-primary-600 hover:underline">terms of service</Link>
-            {' '}and{' '}
-            <Link href="#" className="text-primary-600 hover:underline">privacy policy</Link>.
-            <br />
-            This is for educational purposes only.
-          </p>
         </div>
       </div>
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast({ ...toast, isVisible: false })}
-      />
     </div>
   )
 }
-
