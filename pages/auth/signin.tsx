@@ -19,22 +19,29 @@ export default function SignInPage() {
 
     try {
       const result = await signIn('credentials', {
-        email,
+        email: email.trim(),
         password,
         redirect: false,
       })
 
+      // Log the full result for debugging
+      console.log('[SIGNIN] Result:', { ok: result?.ok, error: result?.error, url: result?.url, status: result?.status })
+
       if (result?.error) {
         // Log the error for debugging
-        console.error('Sign in error:', result.error)
+        console.error('[SIGNIN] Error:', result.error)
+        console.error('[SIGNIN] Full result:', JSON.stringify(result, null, 2))
         
         // Show more specific error messages
         let errorMessage = 'Invalid email or password'
         
-        if (result.error.includes('Database') || result.error.includes('connection')) {
-          errorMessage = 'Database connection error. Please check your database configuration.'
-        } else if (result.error === 'CredentialsSignin') {
-          errorMessage = 'Invalid email or password'
+        // Handle different error types
+        if (result.error === 'CredentialsSignin') {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.'
+        } else if (result.error.includes('Database') || result.error.includes('connection') || result.error.includes('DATABASE_URL')) {
+          errorMessage = 'Database connection error. Please try again later.'
+        } else if (result.error.includes('Internal') || result.error.includes('server')) {
+          errorMessage = 'An error occurred. Please try again or contact support if the problem persists.'
         } else if (result.error) {
           // Try to show the actual error message if available
           errorMessage = result.error
@@ -42,12 +49,15 @@ export default function SignInPage() {
         
         setError(errorMessage)
       } else if (result?.ok) {
+        console.log('[SIGNIN] Success, redirecting to:', callbackUrl)
         router.push(callbackUrl)
       } else {
+        console.error('[SIGNIN] Unexpected result:', result)
         setError('An unexpected error occurred. Please try again.')
       }
     } catch (error: any) {
-      console.error('Error signing in:', error)
+      console.error('[SIGNIN] Exception caught:', error)
+      console.error('[SIGNIN] Error stack:', error.stack)
       const errorMessage = error.message || 'An error occurred. Please try again.'
       setError(errorMessage)
     } finally {

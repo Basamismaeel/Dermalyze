@@ -19,6 +19,8 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export const authOptions: NextAuthOptions = {
+  // Only use PrismaAdapter for OAuth providers, not for credentials
+  // When using JWT strategy with credentials, adapter is optional
   adapter: PrismaAdapter(prisma),
   debug: process.env.NODE_ENV === 'development',
   providers: [
@@ -121,17 +123,32 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.sub as string
-      }
-      return session
+    async signIn({ user, account, profile, email, credentials }) {
+      // Allow sign in for all users
+      // Errors in authorize will prevent sign in
+      return true
     },
-    async jwt({ token, user }) {
-      if (user) {
-        token.sub = user.id
+    async session({ session, token }) {
+      try {
+        if (session.user && token.sub) {
+          session.user.id = token.sub as string
+        }
+        return session
+      } catch (error: any) {
+        console.error('[AUTH] Session callback error:', error)
+        return session
       }
-      return token
+    },
+    async jwt({ token, user, account }) {
+      try {
+        if (user) {
+          token.sub = user.id
+        }
+        return token
+      } catch (error: any) {
+        console.error('[AUTH] JWT callback error:', error)
+        return token
+      }
     },
   },
   events: {
