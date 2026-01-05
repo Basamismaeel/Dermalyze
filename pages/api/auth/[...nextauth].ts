@@ -19,10 +19,23 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export const authOptions: NextAuthOptions = {
-  // Only use PrismaAdapter for OAuth providers, not for credentials
-  // When using JWT strategy with credentials, adapter is optional
+  // PrismaAdapter is needed for OAuth providers (Google)
+  // It's safe to use with JWT strategy and credentials
   adapter: PrismaAdapter(prisma),
   debug: process.env.NODE_ENV === 'development',
+  logger: {
+    error(code, metadata) {
+      console.error('[NEXTAUTH] Error:', code, metadata)
+    },
+    warn(code) {
+      console.warn('[NEXTAUTH] Warning:', code)
+    },
+    debug(code, metadata) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[NEXTAUTH] Debug:', code, metadata)
+      }
+    },
+  },
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -158,5 +171,29 @@ export const authOptions: NextAuthOptions = {
   },
 }
 
-export default NextAuth(authOptions)
+// Create NextAuth handler with error catching
+const handler = NextAuth(authOptions)
+
+// Wrap handler to catch any unhandled errors
+export default async function authHandler(req: any, res: any) {
+  try {
+    return handler(req, res)
+  } catch (error: any) {
+    console.error('[AUTH HANDLER] Unhandled error:', error)
+    console.error('[AUTH HANDLER] Error stack:', error?.stack)
+    
+    // If response hasn't been sent, send error response
+    if (res && !res.headersSent) {
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' 
+          ? error?.message || 'Unknown error'
+          : 'An error occurred during authentication'
+      })
+    }
+    
+    // Re-throw if we can't handle it
+    throw error
+  }
+}
 
